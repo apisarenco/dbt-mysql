@@ -37,6 +37,8 @@ setup(
         'dbt.include.mysql',
         'dbt.adapters.mysql5',
         'dbt.include.mysql5',
+        'dbt.adapters.singlestore',
+        'dbt.include.singlestore',
     ],
     package_data={
         'dbt.include.mysql': [
@@ -51,9 +53,15 @@ setup(
             'dbt_project.yml',
             'sample_profiles.yml',
         ],
+        'dbt.include.singlestore': [
+            'macros/*.sql',
+            'macros/materializations/**/*.sql',
+            'dbt_project.yml',
+            'sample_profiles.yml',
+        ],
     },
     install_requires=[
-        "dbt-core==0.19.0",
+        "dbt-core @ git+https://github.com/dbt-labs/dbt.git@releases/0.21.0b1#subdirectory=core",
         "mysql-connector-python~=8.0.22",
     ],
     classifiers=[
