@@ -6,7 +6,7 @@
     {%- set old_relation = adapter.get_relation(schema=schema, identifier=identifier) -%}
     {%- set old_pipeline = adapter.get_pipeline(schema=schema, identifier=pipeline_identifier) -%}
     {%- set target_relation = api.Relation.create(schema=schema, identifier=identifier, type='table') -%}
-    {%- set full_refresh_mode = (flags.FULL_REFRESH == True) -%}
+    {%- set full_refresh_mode = should_full_refresh() -%}
     {%- set created_relations = [] -%}
 
     {%- set should_drop = old_relation is not none and (full_refresh_mode or old_pipeline is none) -%}
@@ -25,20 +25,22 @@
     {%- endif %}
 
     {%- call statement('main') -%}
+        -- old_relation: {{old_relation}}
+        -- old_pipeline: {{old_pipeline}}
+        -- full_refresh_mode: {{full_refresh_mode}}
+        -- should_drop: {{should_drop}}
+        -- schema: {{schema}}
+        -- identifier: {{identifier}}
         {% if full_refresh_mode or old_relation is none -%}
             {#
                 -- Create an empty table with columns as specified in sql.
                 -- We append a unique invocation_id to ensure no files are actually loaded, and an empty row set is returned,
                 -- which serves as a template to create the table.
             #}
-            -- old_relation: {{old_relation}}
-            -- old_pipeline: {{old_pipeline}}
-            -- full_refresh_mode: {{full_refresh_mode}}
-            -- should_drop: {{should_drop}}
-            -- schema: {{schema}}
-            -- identifier: {{identifier}}
-            CREATE {{ 'ROWSTORE' if config.get('rowstore', default=false) else 'COLUMNSTORE' }} TABLE {{ target_relation }} {{ sql }}
+            CREATE{{ ' ROWSTORE' if config.get('rowstore', default=false) else '' }} TABLE {{ target_relation }} {{ sql }}
             {% do created_relations.append(target_relation) %}
+        {%- else -%}
+            -- Skipping table creation. Table already exists.
         {%- endif %}
     {%- endcall -%}
     {%- call statement('create-pipeline') -%}
@@ -60,5 +62,5 @@
     {{ adapter.commit() }}
 
     {{ run_hooks(post_hooks, inside_transaction=False) }}
-    {{ return({'relations': [created_relations]}) }}
+    {{ return({'relations': created_relations}) }}
 {%- endmaterialization %}

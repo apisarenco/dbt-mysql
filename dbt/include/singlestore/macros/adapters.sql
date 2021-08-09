@@ -20,21 +20,6 @@
   {% endcall %}
 {% endmacro %}
 
-{% macro singlestore__list_pipelines_without_caching(relation) -%}
-    {% call statement('get_pipelines', fetch_result=True) %}
-        SELECT
-          NULL AS db
-          database_name AS schema_name,
-          pipeline_name AS identifier,
-          'external' AS type
-        FROM information_schema.PIPELINES
-        WHERE  database_name='{{ relation.schema }}';
-    {% endcall %}
-
-    {% set table = load_result('get_pipelines').table %}
-    {{ return(sql_convert_columns_in_relation(table)) }}
-{% endmacro %}
-
 {% macro singlestore__drop_relation(relation) -%}
     {% call statement('get_dependent_pipelines', fetch_result=True) %}
         SELECT
@@ -102,7 +87,7 @@
     {{ return(sql_convert_columns_in_relation(table)) }}
 {% endmacro %}
 
-{% macro singlestore__list_relations_without_caching(schema_relation) %}
+{% macro singlestore__list_relations_without_caching(schema_relation) -%}
   {% call statement('list_relations_without_caching', fetch_result=True) -%}
     select
       null as "database",
@@ -118,7 +103,11 @@
   {{ return(load_result('list_relations_without_caching').table) }}
 {% endmacro %}
 
-{% macro singlestore__list_pipelines_without_caching(schema_relation) %}
+{% macro list_pipelines_without_caching(schema_relation) %}
+  {{ return(adapter.dispatch('list_pipelines_without_caching')(schema_relation)) }}
+{% endmacro %}
+
+{% macro singlestore__list_pipelines_without_caching(schema_relation) -%}
   {% call statement('list_pipelines_without_caching', fetch_result=True) -%}
     select
       null as "database",
