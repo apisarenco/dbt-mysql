@@ -30,7 +30,7 @@ class MySQLCredentials(Credentials):
     }
 
     def __post_init__(self):
-        # mysql classifies database and schema as the same thing
+        # SingleStore classifies database and schema as the same thing
         if (
             self.database is not None and
             self.database != self.schema
@@ -38,8 +38,8 @@ class MySQLCredentials(Credentials):
             raise dbt.exceptions.RuntimeException(
                 f"    schema: {self.schema} \n"
                 f"    database: {self.database} \n"
-                f"On MySQL, database must be omitted or have the same value as"
-                f" schema."
+                f"On SingleStore, database must be omitted or have the same"
+                f" value as schema."
             )
         self.database = None
 

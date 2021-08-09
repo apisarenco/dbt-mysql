@@ -4,6 +4,7 @@ from typing import Optional, List, Dict, Any, Union, Iterable
 import agate
 
 import dbt
+from dbt.adapters.base.meta import available
 import dbt.exceptions
 
 from dbt.adapters.base.impl import catch_as_completed
@@ -18,7 +19,7 @@ from dbt.utils import executor
 
 LIST_SCHEMAS_MACRO_NAME = 'list_schemas'
 LIST_RELATIONS_MACRO_NAME = 'list_relations_without_caching'
-
+LIST_PIPELINES_MACRO_NAME = 'list_pipelines_without_caching'
 
 class MySQLAdapter(SQLAdapter):
     Relation = MySQLRelation
@@ -72,6 +73,65 @@ class MySQLAdapter(SQLAdapter):
             relations.append(relation)
 
         return relations
+    
+    def list_pipelines_without_caching(
+        self, schema_relation: MySQLRelation
+    ) -> List[MySQLRelation]:
+        kwargs = {'schema_relation': schema_relation}
+        try:
+            results = self.execute_macro(
+                LIST_PIPELINES_MACRO_NAME,
+                kwargs=kwargs
+            )
+        except dbt.exceptions.RuntimeException as e:
+            errmsg = getattr(e, 'msg', '')
+            if f"SingleStore database '{schema_relation}' not found" in errmsg:
+                return []
+            else:
+                description = "Error while retrieving information about"
+                logger.debug(f"{description} {schema_relation}: {e.msg}")
+                return []
+
+        relations = []
+        for row in results:
+            if len(row) != 4:
+                raise dbt.exceptions.RuntimeException(
+                    f'Invalid value from "singlestore__{LIST_PIPELINES_MACRO_NAME}({kwargs})", '
+                    f'got {len(row)} values, expected 4'
+                )
+            _, name, _schema, relation_type = row
+            relation = self.Relation.create(
+                schema=_schema,
+                identifier=name,
+                type=relation_type
+            )
+            relations.append(relation)
+
+        return relations
+
+    def _schema_pipelines_is_cached(database, schema):
+        return False
+
+    def list_pipelines(self, schema):
+        if self._schema_pipelines_is_cached(schema):
+            return self.cache.get_pipelines(schema)
+
+        schema_relation = self.Relation.create(
+            database=None,
+            schema=schema,
+            identifier='',
+            quote_policy=self.config.quoting
+        ).without_identifier()
+
+        # we can't build the relations cache because we don't have a
+        # manifest so we can't run any operations.
+        pipelines = self.list_pipelines_without_caching(
+            schema_relation
+        )
+
+        logger.debug('with database={}, schema={}, pipelines={}'
+                     .format(None, schema, pipelines))
+        return pipelines
 
     def get_columns_in_relation(self, relation: Relation) -> List[MySQLColumn]:
         rows: List[agate.Row] = super().get_columns_in_relation(relation)
@@ -91,12 +151,31 @@ class MySQLAdapter(SQLAdapter):
             yield as_dict
 
     def get_relation(
-        self, database: str, schema: str, identifier: str
+        self, *, database: str = None, schema: str, identifier: str, 
     ) -> Optional[BaseRelation]:
-        if not self.Relation.include_policy.database:
-            database = None
-
         return super().get_relation(database, schema, identifier)
+
+    @available.parse_none
+    def get_pipeline(
+        self, *, schema: str, identifier: str
+    ) -> Optional[BaseRelation]:
+        pipeline_list = self.list_pipelines(schema)
+        logger.debug("Pipelines: %s", pipeline_list)
+        matches = self._make_match(pipeline_list, None, schema, identifier)
+
+        if len(matches) > 1:
+            kwargs = {
+                'identifier': identifier,
+                'schema': schema,
+                'database': None,
+            }
+            dbt.exceptions.get_relation_returned_multiple_results(
+                kwargs, matches
+            )
+        elif matches:
+            return matches[0]
+
+        return None
 
     def parse_show_columns(
             self,

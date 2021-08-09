@@ -20,9 +20,36 @@
   {% endcall %}
 {% endmacro %}
 
+{% macro singlestore__list_pipelines_without_caching(relation) -%}
+    {% call statement('get_pipelines', fetch_result=True) %}
+        SELECT
+          NULL AS db
+          database_name AS schema_name,
+          pipeline_name AS identifier,
+          'external' AS type
+        FROM information_schema.PIPELINES
+        WHERE  database_name='{{ relation.schema }}';
+    {% endcall %}
+
+    {% set table = load_result('get_pipelines').table %}
+    {{ return(sql_convert_columns_in_relation(table)) }}
+{% endmacro %}
+
 {% macro singlestore__drop_relation(relation) -%}
+    {% call statement('get_dependent_pipelines', fetch_result=True) %}
+        SELECT
+          database_name,
+          pipeline_name
+        FROM information_schema.PIPELINES
+        WHERE JSON_EXTRACT_STRING(config_json, 'table') = '{{ relation.identifier }}'
+          AND database_name='{{ relation.schema }}';
+    {% endcall %}
+    {% set table = load_result('get_dependent_pipelines').table %}
     {% call statement('drop_relation', auto_begin=False) -%}
-        drop {{ relation.type }} if exists {{ relation }}
+      {% for row in table %}
+        DROP PIPELINE {{ row.database_name }}.{{ row.pipeline_name }};
+      {% endfor %}
+      drop {{ relation.type }} if exists {{ relation }};
     {%- endcall %}
 {% endmacro %}
 
@@ -89,6 +116,19 @@
     where table_schema = '{{ schema_relation.schema }}'
   {% endcall %}
   {{ return(load_result('list_relations_without_caching').table) }}
+{% endmacro %}
+
+{% macro singlestore__list_pipelines_without_caching(schema_relation) %}
+  {% call statement('list_pipelines_without_caching', fetch_result=True) -%}
+    select
+      null as "database",
+      PIPELINE_NAME as name,
+      DATABASE_NAME as "schema",
+      'external' as table_type
+    from information_schema.PIPELINES
+    where DATABASE_NAME = '{{ schema_relation.schema }}'
+  {% endcall %}
+  {{ return(load_result('list_pipelines_without_caching').table) }}
 {% endmacro %}
 
 {% macro singlestore__generate_database_name(custom_database_name=none, node=none) -%}
