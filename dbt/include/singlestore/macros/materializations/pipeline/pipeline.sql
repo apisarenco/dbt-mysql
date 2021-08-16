@@ -2,7 +2,7 @@
     {%- set identifier = model['alias'] -%}
     {%- set pipeline_identifier = config.get('pipeline_name', default=identifier ~ '_pipeline') -%}
     {%- set pipeline_name = api.Relation.create(schema=schema, identifier=pipeline_identifier, type=None) -%}
-    {%- set run_mode = config.get('run_mode', default='FOREGROUND') -%}
+    {%- set foreground = config.get('foreground', default=true) -%}
     {%- set old_relation = adapter.get_relation(schema=schema, identifier=identifier) -%}
     {%- set old_pipeline = adapter.get_pipeline(schema=schema, identifier=pipeline_identifier) -%}
     {%- set target_relation = api.Relation.create(schema=schema, identifier=identifier, type='table') -%}
@@ -43,17 +43,19 @@
             -- Skipping table creation. Table already exists.
         {%- endif %}
     {%- endcall -%}
+    {%- set separator = config.get('separator', default=false) -%}
     {%- call statement('create-pipeline') -%}
         {% if full_refresh_mode or old_pipeline is none -%}
             CREATE OR REPLACE PIPELINE {{ pipeline_name }}
             AS LOAD DATA {{ config.require('provider') }} '{{ config.require("url") }}'
             CREDENTIALS '{{ config.require("credentials") }}'
             INTO TABLE {{ identifier }}
-            FORMAT {{ config.get('file_format', default='CSV') }};
+            FORMAT {{ config.get('file_format', default='CSV') }}
+            {{ ("FIELDS TERMINATED BY '" ~ separator ~ "'") if separator else "" }};
         {%- endif %}
     {%- endcall -%}
     {%- call statement('start-pipeline') -%}
-        START PIPELINE {{pipeline_name}} {{run_mode}};
+        START PIPELINE IF NOT RUNNING {{pipeline_name}}{{ ' FOREGROUND' if foreground else '' }};
     {%- endcall -%}
 
     {{ run_hooks(post_hooks, inside_transaction=True) }}

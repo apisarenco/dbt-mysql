@@ -123,3 +123,12 @@
 {% macro singlestore__generate_database_name(custom_database_name=none, node=none) -%}
   {% do return(None) %}
 {%- endmacro %}
+
+{% macro singlestore__generate_schema_name(custom_schema_name=none, node=none) -%}
+  {%- set default_schema = target.schema -%}
+  {%- if custom_schema_name is none -%}
+    {{ default_schema }}
+  {%- else -%}
+    {{ default_schema }}_{{ custom_schema_name | trim }}
+  {%- endif -%}
+{%- endmacro %}
